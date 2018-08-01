@@ -64,7 +64,7 @@ func main() {
 	// Publish a message.
 	err = cli.Publish(&client.PublishOptions{
 		QoS:       mqtt.QoS1,
-		TopicName: []byte("home-assistant/phone"),
+		TopicName: []byte("home-assistant/phone/callerid"),
 		Message:   []byte("1234567890"),
 	})
 	if err != nil {
