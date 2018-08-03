@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	/*	"github.com/brian-armstrong/gpio" */
 	"github.com/tarm/serial"
 	"github.com/yosssi/gmq/mqtt"
 	"github.com/yosssi/gmq/mqtt/client"
@@ -20,12 +21,6 @@ type Cinfo struct {
 }
 
 func checksum_valid(msg_data []byte) bool {
-	/*
-	   type
-	   length
-	   data
-	   checksum
-	*/
 	msg_len := msg_data[1]
 	var sum byte
 	var j byte
@@ -70,48 +65,68 @@ func parse_MDMF(msg_data []byte, callinfo *Cinfo, verbose bool) {
 			/* ID */
 			id = string(msg_data[idx : idx+int(dlen)])
 			callinfo.Number = id
-			fmt.Printf("Number: %s\n", id)
+			if verbose {
+				fmt.Printf("Number: %s\n", id)
+			}
 		case 0x03:
 			/* Reserved for Dialable DN */
-			fmt.Printf("parsed reserved value %02d\n", dtype)
+			if verbose {
+				fmt.Printf("parsed reserved value %02d\n", dtype)
+			}
 		case 0x04:
 			/* Reason for absense of DN */
 			/* O = blocked */
 			dn_reason = string(msg_data[idx : idx+int(dlen)])
 			callinfo.Number = dn_reason
-			if strings.Compare(dn_reason, string("O")) != 0 {
-				fmt.Printf("dn Reason: %s\n", dn_reason)
-			} else {
-				fmt.Printf("Number Blocked\n")
+			if verbose {
+				if strings.Compare(dn_reason, string("O")) != 0 {
+					fmt.Printf("dn Reason: %s\n", dn_reason)
+				} else {
+					fmt.Printf("Number Blocked\n")
+				}
 			}
 		case 0x05:
 			/* Reserved for Redirection */
-			fmt.Printf("parsed reserved value %02d\n", dtype)
+			if verbose {
+				fmt.Printf("parsed reserved value %02d\n", dtype)
+			}
 		case 0x06:
 			/* Call Qualifier */
-			fmt.Printf("parsed call qualifier value %02d\n", dtype)
+			if verbose {
+				fmt.Printf("parsed call qualifier value %02d\n", dtype)
+			}
 		case 0x07:
 			/* Name */
 			name = string(msg_data[idx : idx+int(dlen)])
 			callinfo.Name = name
-			fmt.Printf("Name: %s\n", name)
+			if verbose {
+				fmt.Printf("Name: %s\n", name)
+			}
 		case 0x08:
 			/* Reason for absence of Name */
 			/* P = private */
 			name_reason = string(msg_data[idx : idx+int(dlen)])
 			callinfo.Name = name_reason
-			fmt.Printf("Name Reason: %s\n", name_reason)
+			if verbose {
+				fmt.Printf("Name Reason: %s\n", name_reason)
+			}
 		case 0x0B:
 			/* Message Waiting */
-			fmt.Printf("parsed Message Waiting\n")
+			if verbose {
+				fmt.Printf("parsed Message Waiting\n")
+			}
 		default:
-			fmt.Printf("parsed unrecognized value %02d\n", dtype)
+			if verbose {
+				fmt.Printf("parsed unrecognized value %02d\n", dtype)
+			}
 
 		}
 		bleft = bleft - dlen
 		idx = idx + int(dlen)
 	}
-	fmt.Printf("========================\n")
+	if verbose {
+		fmt.Printf("========================\n")
+	}
 }
 
 func main() {
@@ -119,6 +134,7 @@ func main() {
 	var ipaddress_string string
 	var verbose = flag.Bool("v", false, "Enable verbose output")
 	flag.StringVar(&ipaddress_string, "ip", "172.31.0.51", "ipv4 address of the mqtt server")
+	flag.StringVar(&serialport_string, "port", "/dev/ttyACM0", "path for the serial port device")
 
 	flag.Parse()
 
@@ -134,7 +150,9 @@ func main() {
 	defer cli.Terminate()
 
 	ipstr := ipaddress_string + ":1883"
-	fmt.Println(ipstr)
+	if verbose {
+		fmt.Printf("MQTT server addr: %s\n", ipstr)
+	}
 
 	// Connect to the MQTT Server.
 	err := cli.Connect(&client.ConnectOptions{
@@ -146,9 +164,8 @@ func main() {
 		panic(err)
 	}
 
-	c := &serial.Config{Name: "/dev/ttyUSB0", Baud: 1200}
+	c := &serial.Config{Name: serialport_string, Baud: 1200}
 	s, err := serial.OpenPort(c)
-	/*	s, err := os.Open("./logdata") */
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -156,7 +173,6 @@ func main() {
 
 	go func() {
 		/* Listen to the serial port and parse caller ID data */
-		const UDP_BROADCAST_PORT = "15987"
 		const IDLE = 0
 		const SYNC = 1
 		const READING_LENGTH = 2
@@ -238,8 +254,6 @@ func main() {
 						/* do something */
 						parse_MDMF(msg_data[2:msg_len+2], &callinfo, *verbose)
 						textinfo := fmt.Sprintf("name:%s, time:%s, number:%s", callinfo.Name, callinfo.Time, callinfo.Number)
-						/* Send the call data to MQTT topic */
-						// Publish a message.
 						err = cli.Publish(&client.PublishOptions{
 							QoS:       mqtt.QoS1,
 							TopicName: []byte("home-assistant/phone/callerid"),
@@ -248,20 +262,68 @@ func main() {
 						if err != nil {
 							log.Fatal(err)
 						}
-
 					} else {
-						fmt.Printf("CSUM NOT valid\n")
+						if *verbose {
+							fmt.Printf("CSUM NOT valid\n")
+						}
 					}
 					state = IDLE
 					data_idx = 0
 				default:
-					fmt.Printf("Invalid State, back to IDLE\n")
+					if *verbose {
+						fmt.Printf("Invalid State, back to IDLE\n")
+					}
 					state = IDLE
 					data_idx = 0
 				}
 				n = n - 1
 				idx = idx + 1
 			}
+		}
+	}()
+
+	go func() {
+		/* Monitor the Ring indicator GPIO pin and publish to the MQTT topic */
+		/* Ring indicator is on GPIO 17 */
+		watcher := gpio.NewWatcher()
+		watcher.AddPin(17)
+		defer watcher.Close()
+
+		for {
+			pin, value := watcher.Watch()
+			fmt.Printf("read %d from gpio %d\n", value, pin)
+			textinfo := fmt.Sprintf("%d", pin)
+			err = cli.Publish(&client.PublishOptions{
+				QoS:       mqtt.QoS1,
+				TopicName: []byte("home-assistant/phone/ringing"),
+				Message:   []byte(textinfo),
+			})
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	}()
+
+	go func() {
+		/* Subscribe to the control optic and control relay */
+		/* relay outputs are active low on GPIO 22, 23, 24, 25 */
+		err = cli.Subscribe(&client.SubscribeOptions{
+			SubReqs: []*client.SubReq{
+				&client.SubReq{
+					TopicFilter: []byte("home-assistant/phone/mode"),
+					QoS:         mqtt.QoS0,
+					// Define the processing of the message handler.
+					Handler: func(topicName, message []byte) {
+						fmt.Println(string(topicName), string(message))
+					},
+				},
+			},
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		for {
 		}
 	}()
 
@@ -274,5 +336,15 @@ func main() {
 		if err := cli.Disconnect(); err != nil {
 			panic(err)
 		}
+		// Unsubscribe from topics.
+		err = cli.Unsubscribe(&client.UnsubscribeOptions{
+			TopicFilters: [][]byte{
+				[]byte("home-assistant/phone/mode"),
+			},
+		})
+		if err != nil {
+			panic(err)
+		}
+
 	}
 }
