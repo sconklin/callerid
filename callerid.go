@@ -134,7 +134,7 @@ func main() {
 	var ipaddress_string string
 	var verbose = flag.Bool("v", false, "Enable verbose output")
 	flag.StringVar(&ipaddress_string, "ip", "172.31.0.51", "ipv4 address of the mqtt server")
-	flag.StringVar(&serialport_string, "port", "/dev/ttyACM0", "path for the serial port device")
+	flag.StringVar(&serialport_string, "port", "/dev/ttyAMA0", "path for the serial port device")
 
 	flag.Parse()
 
