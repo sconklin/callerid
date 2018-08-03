@@ -29,7 +29,7 @@ func main() {
 	err := cli.Connect(&client.ConnectOptions{
 		Network:  "tcp",
 		Address:  "172.31.0.51:1883",
-		ClientID: []byte("example-client"),
+		ClientID: []byte("phone-client"),
 	})
 	if err != nil {
 		panic(err)
@@ -59,19 +59,17 @@ func main() {
 			panic(err)
 		}
 	*/
-	fmt.Println("About to publish")
 
 	// Publish a message.
 	err = cli.Publish(&client.PublishOptions{
 		QoS:       mqtt.QoS1,
 		TopicName: []byte("home-assistant/phone/callerid"),
-		Message:   []byte("1234567890"),
+		Message:   []byte("name:Unavailable, time:010203, number:1234567890"),
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("Done publishing")
 	/*
 		// Unsubscribe from topics.
 		err = cli.Unsubscribe(&client.UnsubscribeOptions{
@@ -83,11 +81,13 @@ func main() {
 			panic(err)
 		}
 	*/
-	// Wait for receiving a signal.
-	<-sigc
+	/*
+		// Wait for receiving a signal.
+		<-sigc
 
-	// Disconnect the Network Connection.
-	if err := cli.Disconnect(); err != nil {
-		panic(err)
-	}
+		// Disconnect the Network Connection.
+		if err := cli.Disconnect(); err != nil {
+			panic(err)
+		}
+	*/
 }
