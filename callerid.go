@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	/*	"github.com/brian-armstrong/gpio" */
+	"github.com/brian-armstrong/gpio"
 	"github.com/tarm/serial"
 	"github.com/yosssi/gmq/mqtt"
 	"github.com/yosssi/gmq/mqtt/client"
@@ -132,6 +132,7 @@ func parse_MDMF(msg_data []byte, callinfo *Cinfo, verbose bool) {
 func main() {
 
 	var ipaddress_string string
+	var serialport_string string
 	var verbose = flag.Bool("v", false, "Enable verbose output")
 	flag.StringVar(&ipaddress_string, "ip", "172.31.0.51", "ipv4 address of the mqtt server")
 	flag.StringVar(&serialport_string, "port", "/dev/ttyAMA0", "path for the serial port device")
@@ -150,7 +151,7 @@ func main() {
 	defer cli.Terminate()
 
 	ipstr := ipaddress_string + ":1883"
-	if verbose {
+	if *verbose {
 		fmt.Printf("MQTT server addr: %s\n", ipstr)
 	}
 
@@ -164,6 +165,9 @@ func main() {
 		panic(err)
 	}
 
+	if *verbose {
+		fmt.Printf("Serial device path: %s\n", serialport_string)
+	}
 	c := &serial.Config{Name: serialport_string, Baud: 1200}
 	s, err := serial.OpenPort(c)
 	if err != nil {
@@ -292,6 +296,7 @@ func main() {
 		for {
 			pin, value := watcher.Watch()
 			fmt.Printf("read %d from gpio %d\n", value, pin)
+			/*
 			textinfo := fmt.Sprintf("%d", pin)
 			err = cli.Publish(&client.PublishOptions{
 				QoS:       mqtt.QoS1,
@@ -301,12 +306,14 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
+			*/
 		}
 	}()
 
 	go func() {
 		/* Subscribe to the control optic and control relay */
 		/* relay outputs are active low on GPIO 22, 23, 24, 25 */
+		/*
 		err = cli.Subscribe(&client.SubscribeOptions{
 			SubReqs: []*client.SubReq{
 				&client.SubReq{
@@ -322,7 +329,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-
+*/
 		for {
 		}
 	}()
