@@ -12,7 +12,10 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 )
+
+const ringPin = 17
 
 type Cinfo struct {
 	Name   string
@@ -287,50 +290,85 @@ func main() {
 	}()
 
 	go func() {
-		/* Monitor the Ring indicator GPIO pin and publish to the MQTT topic */
-		/* Ring indicator is on GPIO 17 */
+		/* Monitor the Ring indicator GPIO pin and publish to the MQTT topic
+				 * Ring indicator is active low on ringPin
+				 * U.S. ring cadence is 2 seconds on and 4 off
+		         *
+		         * We periodically get repeated indications that the Value is 1 even when it hasn't changed
+		*/
+		var ringing bool
+		var notify gpio.WatcherNotification
+		tmr := time.NewTimer(10)
+		tmr.Stop()
 		watcher := gpio.NewWatcher()
-		watcher.AddPin(17)
+		watcher.AddPin(ringPin)
 		defer watcher.Close()
 
+		ringing = false
 		for {
-			pin, value := watcher.Watch()
-			fmt.Printf("read %d from gpio %d\n", value, pin)
-			/*
-			textinfo := fmt.Sprintf("%d", pin)
-			err = cli.Publish(&client.PublishOptions{
-				QoS:       mqtt.QoS1,
-				TopicName: []byte("home-assistant/phone/ringing"),
-				Message:   []byte(textinfo),
-			})
-			if err != nil {
-				log.Fatal(err)
+			select {
+			case notify = <-watcher.Notification:
+				if notify.Pin == ringPin {
+					if notify.Value == 0 {
+						/* Ring Start */
+						if !ringing {
+							ringing = true
+							/* This is the beginning of a set of rings */
+							/* Send a topic notification that we're ringing */
+							textinfo := fmt.Sprintf("Yes")
+							err = cli.Publish(&client.PublishOptions{
+								QoS:       mqtt.QoS1,
+								TopicName: []byte("home-assistant/phone/ringing"),
+								Message:   []byte(textinfo),
+							})
+							if err != nil {
+								log.Fatal(err)
+							}
+						}
+						tmr = time.NewTimer(7 * time.Second)
+					}
+				}
+			case <-tmr.C:
+				ringing = false
+				// Send a topic notification that we're NOT ringing
+				textinfo := fmt.Sprintf("No")
+				err = cli.Publish(&client.PublishOptions{
+					QoS:       mqtt.QoS1,
+					TopicName: []byte("home-assistant/phone/ringing"),
+					Message:   []byte(textinfo),
+				})
+				if err != nil {
+					log.Fatal(err)
+				}
 			}
-			*/
 		}
+
+		/*
+		 */
 	}()
 
 	go func() {
-		/* Subscribe to the control optic and control relay */
+		/* Subscribe to the control topic and control the relay */
 		/* relay outputs are active low on GPIO 22, 23, 24, 25 */
 		/*
-		err = cli.Subscribe(&client.SubscribeOptions{
-			SubReqs: []*client.SubReq{
-				&client.SubReq{
-					TopicFilter: []byte("home-assistant/phone/mode"),
-					QoS:         mqtt.QoS0,
-					// Define the processing of the message handler.
-					Handler: func(topicName, message []byte) {
-						fmt.Println(string(topicName), string(message))
+			err = cli.Subscribe(&client.SubscribeOptions{
+				SubReqs: []*client.SubReq{
+					&client.SubReq{
+						TopicFilter: []byte("home-assistant/phone/mode"),
+						QoS:         mqtt.QoS0,
+						// Define the processing of the message handler.
+						Handler: func(topicName, message []byte) {
+							fmt.Println(string(topicName), string(message))
+						},
 					},
 				},
-			},
-		})
-		if err != nil {
-			panic(err)
-		}
-*/
+			})
+			if err != nil {
+				panic(err)
+			}
+		*/
 		for {
+			time.Sleep(1000 * time.Millisecond)
 		}
 	}()
 
