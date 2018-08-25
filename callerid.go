@@ -8,7 +8,6 @@ import (
 	"github.com/yosssi/gmq/mqtt"
 	"github.com/yosssi/gmq/mqtt/client"
 	"log"
-	/*	"net" */
 	"os"
 	"os/signal"
 	"strings"
@@ -16,6 +15,10 @@ import (
 )
 
 const ringPin = 17
+const rly1Pin = 22
+const rly2Pin = 24
+const rly3Pin = 25
+const rly4Pin = 26
 
 type Cinfo struct {
 	Name   string
@@ -258,7 +261,6 @@ func main() {
 					msg_data[data_idx] = buf[idx]
 					data_idx = data_idx + 1
 					if checksum_valid(msg_data) {
-						/* do something */
 						parse_MDMF(msg_data[2:msg_len+2], &callinfo, *verbose)
 						textinfo := fmt.Sprintf("name:%s, time:%s, number:%s", callinfo.Name, callinfo.Time, callinfo.Number)
 						err = cli.Publish(&client.PublishOptions{
@@ -342,38 +344,37 @@ func main() {
 				}
 			}
 		}
-
-		/*
-		 */
 	}()
 
-	go func() {
-		/* Subscribe to the control topic and control the relay */
-		/* relay outputs are active low on GPIO 22, 23, 24, 25 */
-		/*
-			err = cli.Subscribe(&client.SubscribeOptions{
-				SubReqs: []*client.SubReq{
-					&client.SubReq{
-						TopicFilter: []byte("home-assistant/phone/mode"),
-						QoS:         mqtt.QoS0,
-						// Define the processing of the message handler.
-						Handler: func(topicName, message []byte) {
-							fmt.Println(string(topicName), string(message))
-						},
-					},
+	rly1 := gpio.NewOutput(rly1Pin, true)
+	rly2 := gpio.NewOutput(rly2Pin, true)
+	gpio.NewOutput(rly3Pin, true)
+	gpio.NewOutput(rly4Pin, true)
+	/* Subscribe to the control topic and control the relay */
+	err = cli.Subscribe(&client.SubscribeOptions{
+		SubReqs: []*client.SubReq{
+			&client.SubReq{
+				TopicFilter: []byte("home-assistant/phone/mode"),
+				QoS:         mqtt.QoS0,
+				// Define the processing of the message handler.
+				Handler: func(topicName, message []byte) {
+					if strings.Compare(string(message), "bypass") == 0 {
+						rly1.Low()
+						rly2.Low()
+					} else {
+						rly1.High()
+						rly2.High()
+					}
+					fmt.Println(string(topicName), string(message))
 				},
-			})
-			if err != nil {
-				panic(err)
-			}
-		*/
-		for {
-			time.Sleep(1000 * time.Millisecond)
-		}
-	}()
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	for {
-		// hang out here and look for signals and mailbox messages
 		// Wait for receiving a signal.
 		<-sigc
 
